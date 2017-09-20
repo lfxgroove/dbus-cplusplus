@@ -1,0 +1,1 @@
+option('ctemplate_data_dir', type: 'string', value: './', description: 'Location where CTemplates should look for extra templates by default, used with Template::AddAlternateTemplateRootDirectory')
