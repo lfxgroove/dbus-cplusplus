@@ -57,6 +57,16 @@ void usage(char *argv0)
 	cerr << "  " << prog << " <xmlfile> --adaptor=<outfile.h> [ --adaptor-template=<template.tpl> ] [ --templatedir=<template-dir> ]" << endl;
 	cerr << endl << "Flags which can be repeated:" << endl;
 	cerr << "    --define macroname value" << endl;
+        cerr << "    --interface-instance instancename" << endl;
+        cerr << "    --interface interfacename" << endl;
+        cerr << " The order of --interface-instance and --interface matters. --interface decides which " << endl
+             << " interface that has more than one instance, the coming --interface-name decides the names" << endl
+             << " that the instances should have. E.g:" << endl
+             << "   --interface com.test.hello --interface-name i1 --interface-name i2" << endl
+             << " Would ask the generator to create two instances of the interface com.test.hello, " << endl
+             << " one named i1 and one named i2. All --interface-name parameters belong to the nearest" << endl
+             << " preceding --interface. In other words, --interface can be repeated any number of times" << endl
+             << " to create different instances of different interfaces" << endl;
 	exit(-1);
 }
 
@@ -87,7 +97,10 @@ int main(int argc, char ** argv)
 	char *proxy, *adaptor;
 	const char *proxy_template = "proxy-stubs.tpl";
 	const char *adaptor_template = "adaptor-stubs.tpl";
-	std::vector< pair<string, string> > macros;
+        // This maps interfaces to certain instance names that they should have. This is useful if
+        // there are several instances of the same interface available.
+        std::vector<pair<string, vector<string>>> iface_instances;
+	std::vector<pair<string, string>> macros;
 
 	sync_proxy_mode = true;
 	async_proxy_mode = false;
@@ -121,25 +134,40 @@ int main(int argc, char ** argv)
 		{
 			Template::AddAlternateTemplateRootDirectory(argv[a] + 14);
 		}
-		else if (!strcmp(argv[a], "--async"))
+		else if (!strncmp(argv[a], "--async", 7))
 		{
 			async_proxy_mode = true;
 		}
-		else if (!strcmp(argv[a], "--sync"))
+		else if (!strncmp(argv[a], "--sync", 6))
 		{
 			sync_proxy_mode = true;
 		}
-		else if (!strcmp(argv[a], "--noasync"))
+		else if (!strncmp(argv[a], "--noasync", 9))
 		{
 			async_proxy_mode = false;
 		}
-		else if (!strcmp(argv[a], "--define") && (a + 2) < argc)
+                else if (!strncmp(argv[a], "--interface", 11) && (a + 1) < argc)
+                {
+                        const char *interface_name = argv[++a];
+                        iface_instances.push_back(make_pair(interface_name, std::vector<string>()));
+                }
+                else if (!strncmp(argv[a], "--interface-instance", 20) && (a + 1) < argc)
+                {
+                        const char *instance = argv[++a];
+                        if (iface_instances.size() == 0)
+                        {
+                                cerr << "Trying to add interface instance without an instance." << endl;
+                                return -1;
+                        }
+                        iface_instances.back().second.push_back(instance);
+                }
+		else if (!strncmp(argv[a], "--define", 8) && (a + 2) < argc)
 		{
 			const char *name = argv[++a];
 			const char *value = argv[++a];
 			macros.push_back(pair<string, string>(name, value));
 		}
-		else if (!strcmp(argv[a], "--nosync"))
+		else if (!strncmp(argv[a], "--nosync", 8))
 		{
 			sync_proxy_mode = false;
 		}
