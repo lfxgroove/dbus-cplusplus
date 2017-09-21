@@ -68,7 +68,10 @@ inline std::ostream& operator<<(std::ostream &os, Ty const &ty)
 const char *atomic_type_to_string(char t);
 std::string stub_name(std::string name);
 std::string signature_to_type(const std::string &signature);
+// Our own signature to type conversion
 Ty signature_to_ty(const std::string &signature);
+// Our own check for simple type, allows std::string as simple types
+bool is_simple_type(const std::string &signature);
 bool is_primitive_type(const std::string &signature);
 void _parse_signature(const std::string &signature, std::string &type, unsigned int &i);
 void underscorize(std::string &str);

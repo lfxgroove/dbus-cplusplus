@@ -243,6 +243,38 @@ Ty signature_to_ty(const string &signature)
         return types[0];
 }
 
+bool is_simple_type(const string &signature)
+{
+        unsigned int len = signature.length();
+
+	if (len == 0) {
+		cerr << "invalid signature" << endl;
+		exit(-1);
+	}
+
+	if (len > 1) {
+		return false;
+	}
+
+	switch (signature[0]) {
+		case DBUS_TYPE_BYTE:  // uint8_t
+		case DBUS_TYPE_BOOLEAN:  // bool
+		case DBUS_TYPE_INT16:  // int16_t
+		case DBUS_TYPE_UINT16:  // uint16_t
+		case DBUS_TYPE_INT32:  // int32_t
+		case DBUS_TYPE_UINT32:  // uint32_t
+		case DBUS_TYPE_INT64:  // int64_t
+		case DBUS_TYPE_UINT64:  // uint64_t
+		case DBUS_TYPE_DOUBLE:  // double
+		case DBUS_TYPE_UNIX_FD: // int
+                case DBUS_TYPE_STRING: // std::string
+                case DBUS_TYPE_OBJECT_PATH: // path
+			return true;
+		default:
+			return false;
+	}
+}
+
 string signature_to_type(const string &signature)
 {
 	string type;

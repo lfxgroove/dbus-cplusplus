@@ -353,8 +353,54 @@ void generate_interfaces(Xml::Node &iface,
                 prop_dict->SetValue("PROP_NAME", legalize(prop_name));
                 prop_dict->SetValue("PROP_SIG", type);
                 prop_dict->SetValue("PROP_TYPE", signature_to_type(type));
+
                 if (!is_primitive_type(type))
+                {
                         prop_dict->ShowSection("PROP_CONST");
+                }
+
+                if (!is_simple_type(type))
+                {
+                        prop_dict->ShowSection("HAS_COMPLEX_TYPE");
+
+                        Ty ty = signature_to_ty(type);
+                        if (ty.tplParams.size() == 2 && ty.ident == "std::map")
+                        {
+                                if (ty.tplParams[0].ident != "std::string")
+                                {
+                                        cerr << "Can't create property update fory type: " << ty << ", first template parameter must be string" << endl;
+                                        exit(-1);
+                                }
+                                if (ty.tplParams[1].tplParams.size() != 0)
+                                {
+                                        cerr << "Can't create property update for type: " << ty << ", since second template parameter is not simple" << endl;
+                                        exit(-1);
+                                }
+                                prop_dict->ShowSection("MAP_TYPE");
+                        }
+                        else if (ty.ident == "::DBus::Struct")
+                        {
+                                TemplateDictionary *type_dict = prop_dict->AddSectionDictionary("STRUCT_TYPE");
+                                // To allow us to use _1 _2 etc when accessing the struct
+                                int cnt = 1;
+                                for (Ty& t : ty.tplParams)
+                                {
+                                        TemplateDictionary *arg_dict = type_dict->AddSectionDictionary("FOR_EACH_TYPE");
+                                        arg_dict->SetValue("ARG_TYPE", t.ident);
+                                        arg_dict->SetIntValue("ARG_COUNT", cnt);
+                                        ++cnt;
+                                }
+                        }
+                        else
+                        {
+                                cerr << "Can't create property update for type: " << ty << endl;
+                                exit(-1);
+                        }
+                }
+                else
+                {
+                        prop_dict->ShowSection("HAS_SIMPLE_TYPE");
+                }
 
                 if (property_access == "read" || property_access == "readwrite")
                 {
