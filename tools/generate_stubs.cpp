@@ -75,17 +75,19 @@ void generate_methods(TemplateDictionary *dict, Xml::Nodes &methods)
                         {
                                 assert(ret_type_dict);
                                 // Just added so that we can enter the section
-                                sync_method_dict->AddSectionDictionary("FOR_EACH_RET_VEC");
+                                sync_method_dict->ShowSection("FOR_EACH_RET_VEC");
                                 // We assume maximum nesting depth of 1 for tplParams..
                                 if (type.tplParams.size() == 1)
                                 {
                                         // We have one easy type
                                         if (type.tplParams[0].tplParams.size() == 0)
                                         {
+                                                ret_type_dict->ShowSection("VEC_SINGLE_TYPE");
                                                 ret_type_dict->SetValue("VEC_TYPE", type.tplParams[0].ident);
                                         }
                                         else // We probably have a DBus::Struct or similar
                                         {
+                                                ret_type_dict->ShowSection("VEC_MULTI_TYPE");
                                                 ret_type_dict->SetValue("VEC_TYPE", type.tplParams[0].str());
                                                 int cnt = 0;
                                                 for (Ty const &t : type.tplParams[0].tplParams)
@@ -117,19 +119,31 @@ void generate_methods(TemplateDictionary *dict, Xml::Nodes &methods)
                                         exit(-1);
                                 }
                                 // Add it so that we can enter the section
-                                sync_method_dict->AddSectionDictionary("FOR_EACH_RET_MAP");
+                                sync_method_dict->ShowSection("FOR_EACH_RET_MAP");
                         }
                         else if (type.ident == "::DBus::Struct")
                         {
-                                // Special handling is needed for this one as well..
-                                cerr << "Can't handle ::DBus::Struct as single param" << endl;
-                                exit(-1);
+                                assert(ret_type_dict);
+                                sync_method_dict->ShowSection("FOR_EACH_RET_STRUCT");
+                                int cnt = 1; // We start at 1 so that we can access the struct
+                                             // members easily
+                                for (Ty const& t : type.tplParams)
+                                {
+                                        if (t.tplParams.size() != 0)
+                                        {
+                                                cerr << "Can't handle ::DBus::Struct with members that have template parameters" << endl;
+                                                cerr << "Type in question: " << type << endl;
+                                                exit(-1);
+                                        }
+                                        TemplateDictionary *struct_types_dict = sync_method_dict->AddSectionDictionary("STRUCT_TYPES");
+                                        struct_types_dict->SetValue("STRUCT_TYPE", t.ident);
+                                        struct_types_dict->SetIntValue("STRUCT_CNT", cnt);
+                                        ++cnt;
+                                }
                         }
                         else
                         {
-                                // DBus::Path inherits std::string
-                                // We have a primitive type of some sort which should just work out.
-                                
+                                sync_method_dict->ShowSection("FOR_EACH_RET_PRIM");
                         }
                 }
 		else
