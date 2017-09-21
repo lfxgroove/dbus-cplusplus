@@ -58,7 +58,7 @@ void usage(char *argv0)
 	cerr << endl << "Flags which can be repeated:" << endl;
 	cerr << "    --define macroname value" << endl;
         cerr << "    --interface-instance instancename" << endl;
-        cerr << "    --interface interfacename" << endl;
+        cerr << "    --interface interfacename" << endl << endl;
         cerr << " The order of --interface-instance and --interface matters. --interface decides which " << endl
              << " interface that has more than one instance, the coming --interface-name decides the names" << endl
              << " that the instances should have. E.g:" << endl
@@ -99,7 +99,7 @@ int main(int argc, char ** argv)
 	const char *adaptor_template = "adaptor-stubs.tpl";
         // This maps interfaces to certain instance names that they should have. This is useful if
         // there are several instances of the same interface available.
-        std::vector<pair<string, vector<string>>> iface_instances;
+        InterfaceInstances iface_instances;
 	std::vector<pair<string, string>> macros;
 
 	sync_proxy_mode = true;
@@ -146,11 +146,7 @@ int main(int argc, char ** argv)
 		{
 			async_proxy_mode = false;
 		}
-                else if (!strncmp(argv[a], "--interface", 11) && (a + 1) < argc)
-                {
-                        const char *interface_name = argv[++a];
-                        iface_instances.push_back(make_pair(interface_name, std::vector<string>()));
-                }
+                // This needs to be before --interface, otherwise we'll always match on it.
                 else if (!strncmp(argv[a], "--interface-instance", 20) && (a + 1) < argc)
                 {
                         const char *instance = argv[++a];
@@ -160,6 +156,11 @@ int main(int argc, char ** argv)
                                 return -1;
                         }
                         iface_instances.back().second.push_back(instance);
+                }
+                else if (!strncmp(argv[a], "--interface", 11) && (a + 1) < argc)
+                {
+                        const char *interface_name = argv[++a];
+                        iface_instances.push_back(make_pair(interface_name, std::vector<string>()));
                 }
 		else if (!strncmp(argv[a], "--define", 8) && (a + 2) < argc)
 		{
@@ -205,9 +206,9 @@ int main(int argc, char ** argv)
 	}
 
 	if (proxy_mode)
-		generate_stubs(doc, proxy, macros, sync_proxy_mode, async_proxy_mode, proxy_template);
+		generate_stubs(doc, proxy, macros, sync_proxy_mode, async_proxy_mode, iface_instances, proxy_template);
 	else if (adaptor_mode)
-		generate_stubs(doc, adaptor, macros, true, true, adaptor_template);
+		generate_stubs(doc, adaptor, macros, true, true, iface_instances, adaptor_template);
 
 	return 0;
 }

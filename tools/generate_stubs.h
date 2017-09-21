@@ -30,11 +30,15 @@
 
 #include "xml.h"
 
+// Mapping from interface name -> interface instance names
+using InterfaceInstances = std::vector<std::pair<std::string, std::vector<std::string>>>;
+
 void generate_stubs(DBus::Xml::Document &doc,
                     const char *filename,
                     const std::vector< std::pair<std::string, std::string> > &macros,
                     bool sync_mode,
                     bool async_mode,
+                    const InterfaceInstances &iface_instances,
                     const char *template_file);
 
 #endif//__DBUSXX_TOOLS_GENERATE_STUBS_H

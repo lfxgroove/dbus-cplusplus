@@ -284,9 +284,127 @@ void generate_methods(TemplateDictionary *dict, Xml::Nodes &methods)
 	}
 }
 
+void generate_interfaces(Xml::Node &iface,
+                         const std::string &instance_name,
+                         TemplateDictionary &dict,
+                         bool sync_mode,
+                         bool async_mode)
+{
+        Xml::Nodes methods = iface["method"];
+        Xml::Nodes signals = iface["signal"];
+        Xml::Nodes properties = iface["property"];
+
+        string ifacename = iface.get("name");
+        
+        TemplateDictionary *if_dict = dict.AddSectionDictionary("FOR_EACH_INTERFACE");
+
+        if_dict->SetValue("INTERFACE_NAME", ifacename);
+        if (sync_mode)
+                if_dict->ShowSection("SYNC_SECTION");
+        if (async_mode)
+                if_dict->ShowSection("ASYNC_SECTION");
+
+        istringstream ss(ifacename);
+        string nspace;
+        // generates all the namespaces defined with <interface name="X.Y.Z">
+        while (ss.str().find('.', ss.tellg()) != string::npos)
+        {
+                getline(ss, nspace, '.');
+                TemplateDictionary *ns_dict = if_dict->AddSectionDictionary("FOR_EACH_NAMESPACE");
+                ns_dict->SetValue("NAMESPACE_NAME",  nspace);
+        }
+
+        if (instance_name != "")
+        {
+                TemplateDictionary *inst_dict = if_dict->AddSectionDictionary("HAS_INSTANCE");
+                inst_dict->SetValue("INST_NAME", instance_name);
+        }
+        
+        string ifaceclass;
+
+        getline(ss, ifaceclass);
+
+        if_dict->SetValue("CLASS_NAME", ifaceclass);
+
+        // this loop generates all properties
+        for (Xml::Nodes::iterator pi = properties.begin ();
+             pi != properties.end (); ++pi)
+        {
+                Xml::Node &property = **pi;
+                string prop_name = property.get ("name");
+                string type = property.get("type");
+                string property_access = property.get ("access");
+                TemplateDictionary *prop_dict = if_dict->AddSectionDictionary("FOR_EACH_PROPERTY");
+
+                prop_dict->SetValue("PROP_NAME", legalize(prop_name));
+                prop_dict->SetValue("PROP_SIG", type);
+                prop_dict->SetValue("PROP_TYPE", signature_to_type(type));
+                if (!is_primitive_type(type))
+                        prop_dict->ShowSection("PROP_CONST");
+
+                if (property_access == "read" || property_access == "readwrite")
+                {
+                        prop_dict->ShowSection("PROPERTY_GETTER");
+                        prop_dict->SetValue("PROP_READABLE", "true");
+                }
+                else
+                {
+                        prop_dict->SetValue("PROP_READABLE", "false");
+                }
+                if (property_access == "write" || property_access == "readwrite")
+                {
+                        prop_dict->ShowSection("PROPERTY_SETTER");
+                        prop_dict->SetValue("PROP_WRITEABLE", "true");
+                }
+                else
+                {
+                        prop_dict->SetValue("PROP_WRITEABLE", "false");
+                }
+        }
+        generate_methods(if_dict, methods);
+
+        // this loop generates all signals
+        for (Xml::Nodes::iterator si = signals.begin(); si != signals.end(); ++si)
+        {
+                Xml::Node &signal = **si;
+                Xml::Nodes args = signal["arg"];
+
+                TemplateDictionary *sig_dict = if_dict->AddSectionDictionary("FOR_EACH_SIGNAL");
+                sig_dict->SetValue("SIGNAL_NAME", legalize(signal.get("name")));
+
+                // this loop generates all arguments for a signal
+                if (args.size() != 0)
+                        sig_dict->ShowSection("SIGNAL_ARGS_SECTION");
+
+                unsigned int i = 0;
+                for (Xml::Nodes::iterator ai = args.begin(); ai != args.end(); ++ai, ++i)
+                {
+                        Xml::Node &arg = **ai;
+                        TemplateDictionary *arg_dict = sig_dict->AddSectionDictionary("FOR_EACH_SIGNAL_ARG");
+                        TemplateDictionary *arg_list_dict = sig_dict->AddSectionDictionary("SIGNAL_ARG_LIST");
+                        TemplateDictionary *const_arg_dict = sig_dict->AddSectionDictionary("CONST_SIGNAL_ARG_LIST");
+
+                        string arg_decl = signature_to_type(arg.get("type")) + " ";
+                        string const_arg_decl = "const " + arg_decl + "&";
+                        string arg_name = arg.get("name");
+                        arg_name = arg_name.empty() ?
+                                ("argin" + make_string(i)) : legalize(arg_name);
+                        arg_decl += arg_name;
+                        const_arg_decl += arg_name;
+                        arg_dict->SetValue("SIGNAL_ARG_NAME", arg_name);
+                        arg_dict->SetValue("SIGNAL_ARG_SIG", arg.get("type"));
+                        arg_dict->SetValue("SIGNAL_ARG_DECL", arg_decl);
+                        arg_list_dict->SetValue("SIGNAL_ARG_NAME", arg_name);
+                        const_arg_dict->SetValue("SIGNAL_ARG_DECL", const_arg_decl);
+                }
+        }
+}
+
 void generate_stubs(Xml::Document &doc, const char *filename,
                     const std::vector< std::pair<string, string> > &macros,
-		    bool sync_mode, bool async_mode, const char *template_file)
+		    bool sync_mode, bool async_mode,
+                    const InterfaceInstances &iface_instances,
+                    const char *template_file)
 {
 	TemplateDictionary dict("stubs-glue");
 	string filestring = filename;
@@ -309,9 +427,6 @@ void generate_stubs(Xml::Document &doc, const char *filename,
 	for (Xml::Nodes::iterator i = interfaces.begin(); i != interfaces.end(); ++i)
 	{
 		Xml::Node &iface = **i;
-		Xml::Nodes methods = iface["method"];
-		Xml::Nodes signals = iface["signal"];
-		Xml::Nodes properties = iface["property"];
 
 		// gets the name of an interface: <interface name="XYZ">
 		string ifacename = iface.get("name");
@@ -323,102 +438,25 @@ void generate_stubs(Xml::Document &doc, const char *filename,
 			continue;
 		}
 
-		TemplateDictionary *if_dict = dict.AddSectionDictionary("FOR_EACH_INTERFACE");
+                // lookup the interface instances that we want to create
+                std::vector<std::string> instances{};
+                for (auto const& iface : iface_instances)
+                {
+                        if (iface.first == ifacename)
+                        {
+                                instances = iface.second;
+                                break;
+                        }
+                }
 
-		if_dict->SetValue("INTERFACE_NAME", ifacename);
-		if (sync_mode)
-			if_dict->ShowSection("SYNC_SECTION");
-		if (async_mode)
-			if_dict->ShowSection("ASYNC_SECTION");
-
-		istringstream ss(ifacename);
-		string nspace;
-		// generates all the namespaces defined with <interface name="X.Y.Z">
-		while (ss.str().find('.', ss.tellg()) != string::npos)
-		{
-			getline(ss, nspace, '.');
-			TemplateDictionary *ns_dict = if_dict->AddSectionDictionary("FOR_EACH_NAMESPACE");
-			ns_dict->SetValue("NAMESPACE_NAME",  nspace);
-		}
-
-		string ifaceclass;
-
-		getline(ss, ifaceclass);
-
-		if_dict->SetValue("CLASS_NAME", ifaceclass);
-
-		// this loop generates all properties
-		for (Xml::Nodes::iterator pi = properties.begin ();
-		     pi != properties.end (); ++pi)
-		{
-			Xml::Node &property = **pi;
-			string prop_name = property.get ("name");
-			string type = property.get("type");
-			string property_access = property.get ("access");
-			TemplateDictionary *prop_dict = if_dict->AddSectionDictionary("FOR_EACH_PROPERTY");
-
-			prop_dict->SetValue("PROP_NAME", legalize(prop_name));
-			prop_dict->SetValue("PROP_SIG", type);
-			prop_dict->SetValue("PROP_TYPE", signature_to_type(type));
-			if (!is_primitive_type(type))
-				prop_dict->ShowSection("PROP_CONST");
-
-			if (property_access == "read" || property_access == "readwrite")
-			{
-				prop_dict->ShowSection("PROPERTY_GETTER");
-				prop_dict->SetValue("PROP_READABLE", "true");
-			}
-			else
-			{
-				prop_dict->SetValue("PROP_READABLE", "false");
-			}
-			if (property_access == "write" || property_access == "readwrite")
-			{
-				prop_dict->ShowSection("PROPERTY_SETTER");
-				prop_dict->SetValue("PROP_WRITEABLE", "true");
-			}
-			else
-			{
-				prop_dict->SetValue("PROP_WRITEABLE", "false");
-			}
-		}
-		generate_methods(if_dict, methods);
-
-		// this loop generates all signals
-		for (Xml::Nodes::iterator si = signals.begin(); si != signals.end(); ++si)
-		{
-			Xml::Node &signal = **si;
-			Xml::Nodes args = signal["arg"];
-
-			TemplateDictionary *sig_dict = if_dict->AddSectionDictionary("FOR_EACH_SIGNAL");
-			sig_dict->SetValue("SIGNAL_NAME", legalize(signal.get("name")));
-
-			// this loop generates all arguments for a signal
-			if (args.size() != 0)
-				sig_dict->ShowSection("SIGNAL_ARGS_SECTION");
-
-			unsigned int i = 0;
-			for (Xml::Nodes::iterator ai = args.begin(); ai != args.end(); ++ai, ++i)
-			{
-				Xml::Node &arg = **ai;
-				TemplateDictionary *arg_dict = sig_dict->AddSectionDictionary("FOR_EACH_SIGNAL_ARG");
-				TemplateDictionary *arg_list_dict = sig_dict->AddSectionDictionary("SIGNAL_ARG_LIST");
-				TemplateDictionary *const_arg_dict = sig_dict->AddSectionDictionary("CONST_SIGNAL_ARG_LIST");
-
-				string arg_decl = signature_to_type(arg.get("type")) + " ";
-				string const_arg_decl = "const " + arg_decl + "&";
-				string arg_name = arg.get("name");
-				arg_name = arg_name.empty() ?
-						("argin" + make_string(i)) : legalize(arg_name);
-				arg_decl += arg_name;
-				const_arg_decl += arg_name;
-				arg_dict->SetValue("SIGNAL_ARG_NAME", arg_name);
-				arg_dict->SetValue("SIGNAL_ARG_SIG", arg.get("type"));
-				arg_dict->SetValue("SIGNAL_ARG_DECL", arg_decl);
-				arg_list_dict->SetValue("SIGNAL_ARG_NAME", arg_name);
-				const_arg_dict->SetValue("SIGNAL_ARG_DECL", const_arg_decl);
-			}
-		}
+                if (instances.size() == 0)
+                {
+                        generate_interfaces(iface, "", dict, sync_mode, async_mode);
+                }
+                for (auto const& inst_name : instances)
+                {
+                        generate_interfaces(iface, inst_name, dict, sync_mode, async_mode);
+                }
 	}
 
 	ofstream file(filename);
