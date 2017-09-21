@@ -8,6 +8,6 @@ xml_dep = dependency('expat', native: true)
 # We build this one natively as we only use it to generate files needed for
 # later stages in compilation.
 dbus_xml2cpp = executable('dbusxx-xml2cpp', src,
-           dependencies: [dbus_dep, dbusxx_dep, ctemplate_dep, xml_dep],
-           cpp_args: ['-DDATADIR="' + get_option('ctemplate_data_dir') + '"'],
-           native: true)
+    dependencies: [dbus_dep, dbusxx_dep, ctemplate_dep, xml_dep],
+    cpp_args: ['-DDATADIR="' + get_option('ctemplate_data_dir') + '"'],
+    native: true)
